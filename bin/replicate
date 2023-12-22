@@ -1,0 +1,69 @@
+#!/bin/sh
+#
+# $USERte.sh - script to replicate database and platform code from give host
+#
+
+TARGET=$1
+ACTION=$2
+DBNAME="dealervenom"
+DOMAIN="dealervenom.com"
+PLATFORM="/srv/sites/platform"
+
+ping -c1 -w1 $TARGET
+if [ $? -eq 1 ]; then
+    echo "Unable to ping $TARGET, giving up"
+    exit 1
+fi
+
+if [ -n "$2" ]; then
+  DBNAME="$2"
+fi
+
+# dump and load database
+rm -f /tmp/$TARGET.sql.bz2
+echo "Dumping $DBNAME@$TARGET database and loading to $USER@localhost"
+#mysqldump -h $TARGET $DBNAME | bzip2 > /tmp/$TARGET.sql.bz2
+mysqldump -h $TARGET $DBNAME | sed 's/utf8mb4_0900_ai_ci/utf8mb4_unicode_ci/g' | mysql $USER
+
+if [ $? -ne 0 ]; then
+    echo "MYSQL dump of $TARGET.$DBNAME failed"
+    /usr/local/bin/slackdev "MYSQL dump of $TARGET@$DBNAME failed."
+    exit 1
+fi
+
+#chmod 777 /tmp/$TARGET.sql.bz2
+#if [ -f /tmp/$TARGET.sql.bz2 -a $? -eq 0 ]; then
+    #echo "Restoring dump to $USER@localhost "
+    #bzcat /tmp/$TARGET.sql.bz2 | mysql $USER
+    #rm -f /tmp/$TARGET.sql.bz2
+#else
+    #echo "Dump failed, quitting"
+    #exit 1
+#fi
+
+if [ -z "$ACTION" ]; then
+    echo "Syncing platform content, log: /tmp/$TARGET.rsync.log"
+    #rsync -av --exclude=.env --exclude=.git/ --exclude=web/app/cache/ --delete deploy@$TARGET:$PLATFORM /srv/sites/$USER.$DOMAIN/ > /tmp/$TARGET.$USER.rsync.log 2>&1
+    #echo "rsync -av --exclude=.env --exclude=.git/ --exclude=web/app/cache/ --delete deploy@$TARGET:$PLATFORM /srv/sites/$USER.$DOMAIN/"
+    rsync -av --exclude=.env --exclude=.git/ --exclude=web/app/cache/ --delete deploy@$TARGET:$PLATFORM /srv/sites/$USER.$DOMAIN/
+    rm -rf /srv/sites/$USER.$DOMAIN/web/app/cache/*
+    chgrp -R www-data /srv/sites/$USER.$DOMAIN
+    chmod -R g+w /srv/sites/$USER.$DOMAIN
+
+    #chmod 666 /tmp/$TARGET.rsync.log
+
+    echo "Copying keys and salts"
+    scp -q deploy@$TARGET:$PLATFORM.env /tmp/.$TARGET.env
+    cat /tmp/.$TARGET.env | egrep "SALT|KEY" > /tmp/.$TARGET.env.os
+    cat /srv/sites/$USER.$DOMAIN/.env | egrep -v "SALT|KEY|DV_ISREPLICATED|DV_REPLICATEDLOCATION" > /tmp/.$TARGET.env.ns
+    cat /tmp/.$TARGET.env.os >> /tmp/.$TARGET.env.ns
+    mv /tmp/.$TARGET.env.ns /srv/sites/$USER.$DOMAIN/.env
+    rm -f /tmp/.$TARGET.env*
+
+    echo "Disabling robots"
+    cp /srv/adm/conf/robots.replicate /srv/sites/$USER.$DOMAIN/web/robots.txt
+fi
+
+echo "Done deal!"
+/usr/local/bin/slackdev "$TARGET platform replicated to https://$USER.$DOMAIN"
+

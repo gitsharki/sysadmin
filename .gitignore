@@ -23,3 +23,6 @@ Build.bat
 
 # Module::Install
 inc/
+
+# JetBrains
+.idea/
