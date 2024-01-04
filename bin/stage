@@ -1,0 +1,52 @@
+#!/bin/sh
+#
+# stage - script to stage current user's changes to give web server
+#
+TARGET=$1
+
+if [ -z "$TARGET" ]; then
+  echo "Please specify target web server"
+  echo "Example: stage www.autoprove.com"
+  exit 1
+fi
+
+STAGE_ROOT="/srv/sites/staging/"
+STAGE_DB="staging"
+
+echo "Exporting local MySQL database $USER to $TARGET as 'replica'@'development.dealervenom.com'"
+echo "/usr/bin/mysqldump $USER | mysql -h $TARGET $STAGE_DB"
+/usr/bin/mysqldump $USER | mysql -h $TARGET $STAGE_DB
+
+if [ $? -ne 0 ]; then
+  echo "Database export failed, exit code: $?"
+  exit $?
+fi
+echo "Syncing local files from /srv/sites/$USER.dealervenom.com/ to deploy@$TARGET:$STAGE_ROOT"
+ssh deploy@$TARGET  "rm -rf $STAGE_ROOT/web/app/cache/*"
+/usr/bin/rsync -av --delete -e "ssh -o StrictHostKeyChecking=no" --exclude=web/app/uploads/wprevslider/ --exclude=.env --exclude=web/app/cache/ --exclude=//web/app/cache/ --exclude=/web/app/cache/ /srv/sites/$USER.dealervenom.com/ deploy@$TARGET:$STAGE_ROOT
+
+scp -q deploy@$TARGET:/srv/sites/staging/.env /tmp/.$TARGET.env
+cat /tmp/.$TARGET.env | egrep -v "DV_ISREPLICATED|DV_REPLICATEDLOCATION" > /tmp/.$TARGET.env.pre
+echo "" >> /tmp/.$TARGET.env.pre
+echo "DV_ISREPLICATED=0" >> /tmp/.$TARGET.env.pre
+scp -q /tmp/.$TARGET.env.pre deploy@$TARGET:/srv/sites/staging/.env
+rm -f /tmp/.$TARGET.env*
+
+cat /srv/sites/$USER.dealervenom.com/.env | egrep -v "DV_ISREPLICATED|DV_REPLICATEDLOCATION" > /tmp/.$TARGET-stage.env
+echo "" >> /tmp/.$TARGET-stage.env
+echo "DV_ISREPLICATED=1" >> /tmp/.$TARGET-stage.env
+echo "DV_REPLICATEDLOCATION=$TARGET" >> /tmp/.$TARGET-stage.env
+mv /tmp/.$TARGET-stage.env /srv/sites/$USER.dealervenom.com/.env
+rm -f /tmp/.$TARGET-stage.env*
+
+
+if [ $? -ne 0 ]; then
+  echo "File sync failed, exit code: $?"
+  exit $?
+fi
+
+STAGE_TARGET=`echo $TARGET | awk -F. '{print $1}'`".stage.dealervenom.com"
+
+echo "======================================"
+echo "Staging your changes to $TARGET complete!  View results @ https://$STAGE_TARGET"
+/usr/local/bin/slackdev "https://$USER.dealervenom.com staged to https://$STAGE_TARGET"
