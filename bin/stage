@@ -10,20 +10,21 @@ if [ -z "$TARGET" ]; then
   exit 1
 fi
 
-STAGE_ROOT="/srv/sites/staging/"
+STAGE_ROOT="/srv/sites/staging"
 STAGE_DB="staging"
 
 echo "Exporting local MySQL database $USER to $TARGET as 'replica'@'development.dealervenom.com'"
-echo "/usr/bin/mysqldump $USER | mysql -h $TARGET $STAGE_DB"
-/usr/bin/mysqldump $USER | mysql -h $TARGET $STAGE_DB
+echo "/usr/bin/mysqldump $USER | sed 's/utf8mb4_0900_ai_ci/utf8mb4_unicode_ci/g' | mysql -h $TARGET $STAGE_DB"
+/usr/bin/mysqldump $USER | sed 's/utf8mb4_0900_ai_ci/utf8mb4_unicode_ci/g' |  mysql -h $TARGET $STAGE_DB
 
 if [ $? -ne 0 ]; then
   echo "Database export failed, exit code: $?"
   exit $?
 fi
-echo "Syncing local files from /srv/sites/$USER.dealervenom.com/ to deploy@$TARGET:$STAGE_ROOT"
+echo "Syncing local files from /srv/sites/$USER.dealervenom.com/ to deploy@$TARGET:$STAGE_ROOT/"
 ssh deploy@$TARGET  "rm -rf $STAGE_ROOT/web/app/cache/*"
-/usr/bin/rsync -av --delete -e "ssh -o StrictHostKeyChecking=no" --exclude=web/app/uploads/wprevslider/ --exclude=.env --exclude=web/app/cache/ --exclude=//web/app/cache/ --exclude=/web/app/cache/ /srv/sites/$USER.dealervenom.com/ deploy@$TARGET:$STAGE_ROOT
+/usr/bin/rsync -av --delete -e "ssh -o StrictHostKeyChecking=no" --exclude=web/app/uploads/wprevslider/ --exclude=.env --exclude=web/app/cache/ /srv/sites/$USER.dealervenom.com/ deploy@$TARGET:$STAGE_ROOT/
+ssh deploy@$TARGET "chgrp -R www-data $STAGE_ROOT/web/app/; chmod -R g+w $STAGE_ROOT/web/app/"
 
 scp -q deploy@$TARGET:/srv/sites/staging/.env /tmp/.$TARGET.env
 cat /tmp/.$TARGET.env | egrep -v "DV_ISREPLICATED|DV_REPLICATEDLOCATION" > /tmp/.$TARGET.env.pre
@@ -36,7 +37,8 @@ cat /srv/sites/$USER.dealervenom.com/.env | egrep -v "DV_ISREPLICATED|DV_REPLICA
 echo "" >> /tmp/.$TARGET-stage.env
 echo "DV_ISREPLICATED=1" >> /tmp/.$TARGET-stage.env
 echo "DV_REPLICATEDLOCATION=$TARGET" >> /tmp/.$TARGET-stage.env
-mv /tmp/.$TARGET-stage.env /srv/sites/$USER.dealervenom.com/.env
+cat /tmp/.$TARGET-stage.env | egrep -v "^[\w]*$" > /tmp/.$TARGET-stage.env.nospace
+mv /tmp/.$TARGET-stage.env.nospace /srv/sites/$USER.dealervenom.com/.env
 rm -f /tmp/.$TARGET-stage.env*
 
 

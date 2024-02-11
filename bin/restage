@@ -33,11 +33,12 @@ fi
 #fi
 
 if [ -z "$ACTION" ]; then
-    echo "Syncing staging content, log: /tmp/$TARGET.rsync.log"
+    #echo "Syncing staging content, log: /tmp/$TARGET.rsync.log"
+    echo "Syncing staging content from deploy@$TARGET:/srv/sites/staging/ to /srv/sites/$USER.dealervenom.com/"
     rsync -av --exclude=.env --exclude=.git/ --exclude=web/app/cache/ --delete deploy@$TARGET:/srv/sites/staging/ /srv/sites/$USER.dealervenom.com/
     rm -rf /srv/sites/$USER.dealervenom.com/web/app/cache/*
-    chgrp -R www-data /srv/sites/$USER.dealervenom.com
-    chmod -R g+w /srv/sites/$USER.dealervenom.com
+    chgrp -R www-data /srv/sites/$USER.dealervenom.com/web
+    chmod -R g+w /srv/sites/$USER.dealervenom.com/web
 
     #chmod 666 /tmp/$TARGET.rsync.log
 
@@ -54,7 +55,8 @@ if [ -z "$ACTION" ]; then
     echo "" >> /tmp/.$TARGET.env.pre
     echo "DV_ISREPLICATED=1" >> /tmp/.$TARGET.env.pre
     echo "DV_REPLICATEDLOCATION=\"https://$USER.dealervenom.com\"" >> /tmp/.$TARGET.env.pre
-    scp -q /tmp/.$TARGET.env.pre deploy@$TARGET:/srv/sites/staging/.env
+    cat /tmp/.$TARGET.env.pre | egrep -v "^[\w]*$" > /tmp/.$TARGET.env.nospace
+    scp -q /tmp/.$TARGET.env.nospace deploy@$TARGET:/srv/sites/staging/.env
     rm -f /tmp/.$TARGET.env*
 
 fi

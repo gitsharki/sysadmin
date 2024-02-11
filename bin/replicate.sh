@@ -19,30 +19,21 @@ mysqldump -h $TARGET dealervenom | bzip2 > /tmp/$TARGET.sql.bz2
 if [ -f /tmp/$TARGET.sql.bz2 ]; then
     echo "Restoring dump to replica@localhost "
     bzcat /tmp/$TARGET.sql.bz2 | mysql replica
-    rm -f /tmp/$TARGET.sql.bz2
 else
     echo "Dump failed, quitting"
     exit 1
 fi
 
-if [ -z "$ACTION" -o "$ACTION" = "nouploads"  ]; then
+if [ -z "$ACTION" ]; then
     echo "Syncing platform content, log: /tmp/$TARGET.rsync.log"
-    if [ "$ACTION" != "nouploads" ]; then
-        rsync -av --exclude=.env --exclude=.git/ --exclude=web/app/cache/ --delete replica@$TARGET:/srv/sites/platform/ /srv/sites/replica.dealervenom.com/ > /tmp/$TARGET.rsync.log 2>&1
-    else
-        rsync -av --exclude=.env --exclude=.git/ --exclude=web/app/cache/ --exclude=web/app/uploads/chrome_images/ --delete replica@$TARGET:/srv/sites/platform/ /srv/sites/replica.dealervenom.com/ > /tmp/$TARGET.rsync.log 2>&1
-    fi
-
-    chmod 666 /tmp/$TARGET.rsync.log
-
-    rm -rf /srv/sites/replica.dealervenom.com/web/app/cache/*
+    rsync -av --exclude=.env --exclude=.git/ --exclude=web/app/cache/ --delete replica@$TARGET:/srv/sites/platform/ /srv/sites/replica.dealervenom.com/ > /tmp/$TARGET.rsync.log 2>&1
     chgrp -R www-data /srv/sites/replica.dealervenom.com
     chmod -R g+w /srv/sites/replica.dealervenom.com
 
     echo "Copying keys and salts"
     scp -q replica@$TARGET:/srv/sites/platform/.env /tmp/.$TARGET.env
-    cat /tmp/.$TARGET.env | egrep "SALT|KEY" > /tmp/.$TARGET.env.os
-    cat /srv/sites/replica.dealervenom.com/.env | egrep -v "SALT|KEY" > /tmp/.$TARGET.env.ns
+    cat /tmp/.$TARGET.env | egrep "SALT|KEY|WP_ENV" > /tmp/.$TARGET.env.os
+    cat /srv/sites/replica.dealervenom.com/.env | egrep -v "SALT|KEY|WP_ENV" > /tmp/.$TARGET.env.ns
     cat /tmp/.$TARGET.env.os >> /tmp/.$TARGET.env.ns
     mv /tmp/.$TARGET.env.ns /srv/sites/replica.dealervenom.com/.env
     rm -f /tmp/.$TARGET.env*
