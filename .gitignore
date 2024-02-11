@@ -26,3 +26,6 @@ inc/
 
 # JetBrains
 .idea/
+
+# Temporary files for development
+tmp/
